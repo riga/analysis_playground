@@ -3,4 +3,6 @@
 
 # import all task modules
 import ap.tasks.base
-import ap.tasks.test
+import ap.tasks.external
+import ap.tasks.selection
+import ap.tasks.law_test

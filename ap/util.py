@@ -179,6 +179,30 @@ def call_proc(func, args=(), kwargs=None, timeout=None):
         return (True,) + q.get()
 
 
+@law.decorator.factory(accept_generator=True)
+def ensure_proxy(fn, opts, task, *args, **kwargs):
+    """
+    Law task decorator that checks whether either a voms or arc proxy is existing before calling
+    the decorated method.
+    """
+    def before_call():
+        # do nothing for grid jobs
+        if os.getenv("AP_ON_GRID") == "1":
+            return None
+
+        # check the proxy validity
+        if not law.wlcg.check_voms_proxy_validity() and not law.arc.check_arc_proxy_validity():
+            raise Exception("neither voms nor arc proxy valid")
+
+    def call(state):
+        return fn(task, *args, **kwargs)
+
+    def after_call(state):
+        return
+
+    return before_call, call, after_call
+
+
 def determine_xrd_redirector(lfn, redirectors=None, timeout=30, check_tfile=None):
     """
     Determines the optimal XRootD redirectors for a file given by its *lfn* using a list of possible

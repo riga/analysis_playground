@@ -9,9 +9,7 @@ from collections import OrderedDict
 
 import luigi
 import law
-
-
-law.contrib.load("numpy", "telegram", "root", "tasks")
+import six
 
 
 class BaseTask(law.Task):
@@ -29,7 +27,9 @@ class AnalysisTask(BaseTask):
 
     output_collection_cls = law.SiblingFileCollection
     default_store = "$AP_STORE"
-    store_by_family = False
+
+    # hard-coded analysis name, could be changed to a parameter
+    analysis = "hh_bbtt"
 
     @classmethod
     def modify_param_values(cls, params):
@@ -50,7 +50,28 @@ class AnalysisTask(BaseTask):
             _prefer_cli.append("version")
         kwargs["_prefer_cli"] = _prefer_cli
 
+        # default to the version of the requested task class in the version map accessible through
+        # the task instance
+        if isinstance(getattr(cls, "version", None), luigi.Parameter) and "version" not in kwargs:
+            version_map = cls.get_version_map(inst)
+            if cls.__name__ in version_map:
+                kwargs["version"] = version_map[cls.__name__]
+
         return super(AnalysisTask, cls).req_params(inst, **kwargs)
+
+    @classmethod
+    def get_version_map(cls, task):
+        return task.analysis_inst.get_aux("versions", {})
+
+    def __init__(self, *args, **kwargs):
+        super(AnalysisTask, self).__init__(*args, **kwargs)
+
+        # store the analysis instance
+        if self.analysis == "hh_bbtt":
+            from ap.config.analysis_hh_bbtt import analysis_hh_bbtt
+            self.analysis_inst = analysis_hh_bbtt
+        else:
+            raise ValueError("unknown analysis {}".format(self.analysis))
 
     def store_parts(self):
         """
@@ -60,8 +81,11 @@ class AnalysisTask(BaseTask):
         """
         parts = OrderedDict()
 
-        # in this base clas, just add the task family (namespace + class name) or task class name
-        parts["task_class"] = self.task_family if self.store_by_family else self.__class__.__name__
+        # add the analysis name
+        parts["analysis"] = self.analysis_inst.name
+
+        # in this base class, just add the task class name
+        parts["task_class"] = self.__class__.__name__
 
         return parts
 
@@ -111,6 +135,94 @@ class AnalysisTask(BaseTask):
 
         # create the target instance and return it
         return cls(path, **kwargs)
+
+
+class ConfigTask(AnalysisTask):
+
+    config = luigi.Parameter(
+        default="run2_pp_2018",
+        description="name of the analysis config to use; default: run2_pp_2018",
+    )
+
+    @classmethod
+    def get_version_map(cls, task):
+        return task.config_inst.get_aux("versions", {})
+
+    def __init__(self, *args, **kwargs):
+        super(ConfigTask, self).__init__(*args, **kwargs)
+
+        # store a reference to the config instance
+        self.config_inst = self.analysis_inst.get_config(self.config)
+
+    def store_parts(self):
+        parts = super(ConfigTask, self).store_parts()
+
+        # add the config name
+        parts["config"] = self.config_inst.name
+
+        return parts
+
+
+class DatasetTask(ConfigTask):
+
+    dataset = luigi.Parameter(
+        default="hh_ggf_kl1_kt1",
+        description="name of the dataset to process; default: hh_ggf_kl1_kt1",
+    )
+
+    file_merging = None
+
+    def __init__(self, *args, **kwargs):
+        super(DatasetTask, self).__init__(*args, **kwargs)
+
+        # store references to the dataset instance
+        self.dataset_inst = self.config_inst.get_dataset(self.dataset)
+
+        # for the moment, store the nominal dataset info
+        # this will change once there is the intermediate ShiftTask that models uncertainties
+        self.dataset_info_inst = self.dataset_inst.get_info("nominal")
+
+    def store_parts(self):
+        parts = super(DatasetTask, self).store_parts()
+
+        # insert the dataset
+        parts["dataset"] = self.dataset_inst.name
+
+        return parts
+
+    def modify_polling_status_line(self, status_line):
+        """
+        Hook to modify the line printed by remote workflows when polling for jobs.
+        """
+        return "{}, {}".format(status_line, self.dataset_inst.name)
+
+    @property
+    def file_merging_factor(self):
+        """
+        Returns the number of files that are handled in one branch. Consecutive merging steps are
+        not handled yet.
+        """
+        merging_info = self.config_inst.get_aux("file_merging")
+        n_files = self.dataset_info_inst.n_files
+
+        if isinstance(self.file_merging, six.integer_types):
+            # interpret the file_merging attribute as the merging factor itself
+            # non-positive numbers mean "merge all in one"
+            n_merge = self.file_merging if self.file_merging > 0 else n_files
+        elif self.file_merging in merging_info:
+            # the file_merging attributes refers to a dict in the merging_info
+            n_merge = merging_info[self.file_merging].get(self.dataset_inst.name, n_files)
+        else:
+            # no merging at all
+            n_merge = 1
+
+        return n_merge
+
+    def create_branch_map(self):
+        n_merge = self.file_merging_factor
+        n_files = self.dataset_info_inst.n_files
+
+        return dict(enumerate(law.util.iter_chunks(n_files, n_merge)))
 
 
 class CommandTask(AnalysisTask):

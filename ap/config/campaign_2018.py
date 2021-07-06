@@ -17,7 +17,7 @@ import ap.config.processes as procs
 
 # campaign
 campaign_2018 = od.Campaign(
-    name="2018_13Tev_25ns",
+    name="run2_pp_2018",
     id=1,
     ecm=13,
     bx=25,
