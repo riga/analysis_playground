@@ -4,3 +4,9 @@
 [submodule "modules/law"]
 	path = modules/law
 	url = https://github.com/riga/law.git
+[submodule "modules/order"]
+	path = modules/order
+	url = https://github.com/riga/order.git
+[submodule "modules/scinum"]
+	path = modules/scinum
+	url = https://github.com/riga/scinum.git

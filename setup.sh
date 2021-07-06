@@ -120,7 +120,7 @@ setup() {
     #
 
     if [ -d "$AP_BASE/.git" ]; then
-        for m in law plotlib; do
+        for m in law order scinum plotlib; do
             local mpath="$AP_BASE/modules/$m"
             # initialize the submodule when the directory is empty
             local mfiles=( "$mpath"/* )
@@ -254,7 +254,7 @@ interactive_setup() {
 
 action() {
     if setup "$@"; then
-        echo -e "\x1b[0;49;35mHH analysis playground successfully setup\x1b[0m"
+        echo -e "\x1b[0;49;35manalysis playground successfully setup\x1b[0m"
         return "0"
     else
         local code="$?"
