@@ -26,5 +26,6 @@ tmp
 store
 software
 data
+.data
 .law
 .setups

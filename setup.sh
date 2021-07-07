@@ -37,6 +37,9 @@ setup() {
     [ -z "$LANG" ] && export LANG="en_US.UTF-8"
     [ -z "$LC_ALL" ] && export LC_ALL="en_US.UTF-8"
 
+    # proxy
+    export X509_USER_PROXY="/tmp/x509up_u$( id -u )"
+
 
     #
     # helper functions
@@ -47,6 +50,17 @@ setup() {
         PYTHONUSERBASE="$AP_SOFTWARE" pip install --user --no-cache-dir "$@"
     }
     $shell_is_bash && export -f ap_pip_install
+
+    # helper to create or check a voms proxy
+    ap_voms_proxy() {
+        local mode="${1}"
+        local voms="${AP_VOMS:-cms}"
+        if [ "$mode" = "check" ]; then
+            voms-proxy-info
+        else
+            voms-proxy-init -voms "$AP_VOMS" --valid "196:00" --out "$X509_USER_PROXY"
+    }
+    $shell_is_bash && export -f ap_voms_proxy
 
 
     #
@@ -78,14 +92,18 @@ setup() {
     [ "$AP_REINSTALL_SOFTWARE" = "1" ] && rm -f "$flag_file_sw"
     if [ ! -f "$flag_file_sw" ]; then
         echo "installing software stack at $AP_SOFTWARE"
-        rm -rf "$AP_SOFTWARE/lib"
         mkdir -p "$AP_SOFTWARE"
+        rm -rf "$AP_SOFTWARE"/{lib,bin}
 
         # python packages
-        ap_pip_install six==1.15.0 || return "$?"
-        ap_pip_install luigi==2.8.13 || return "$?"
-        ap_pip_install python-telegram-bot==12.3.0 || return "$?"
-        ap_pip_install tornado==5.1.1 || return "$?"
+        ap_pip_install -U "pip" || return "$?"
+        ap_pip_install -U "setuptools<45" || return "$?"
+        ap_pip_install -U "setuptools-rust<0.11" || return "$?"
+        ap_pip_install "six==1.16.0" || return "$?"
+        ap_pip_install "luigi==2.8.13" || return "$?"
+        ap_pip_install "cryptography==3.3.2" || return "$?"
+        ap_pip_install "python-telegram-bot==12.3.0" || return "$?"
+        ap_pip_install "tornado==5.1.1" || return "$?"
 
         date "+%s" > "$flag_file_sw"
         echo "version $sw_version" >> "$flag_file_sw"
@@ -232,6 +250,7 @@ interactive_setup() {
         export_and_save AP_SCHEDULER_HOST "USER:PASS@HOST.TLD"
         export_and_save AP_SCHEDULER_PORT "80"
     fi
+    query AP_VOMS "Virtual-organization" "cms:/cms/dcms"
 
     # move the env file to the correct location for later use
     if ! $setup_is_default; then

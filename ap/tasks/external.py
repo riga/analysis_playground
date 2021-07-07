@@ -18,6 +18,8 @@ from ap.util import ensure_proxy
 
 class GetDatasetLFNs(DatasetTask, law.tasks.TransferLocalFile):
 
+    sandbox = "bash::/cvmfs/cms.cern.ch/cmsset_default.sh"
+
     replicas = luigi.IntParameter(
         default=10,
         description="number of replicas to generate; default: 10",
