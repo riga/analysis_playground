@@ -59,6 +59,7 @@ setup() {
             voms-proxy-info
         else
             voms-proxy-init -voms "$AP_VOMS" --valid "196:00" --out "$X509_USER_PROXY"
+        fi
     }
     $shell_is_bash && export -f ap_voms_proxy
 
@@ -234,7 +235,7 @@ interactive_setup() {
 
     # start querying for variables
     query AP_USER "CERN / WLCG username" "$( whoami )"
-    query AP_DATA "Local data directory" "$AP_BASE/data" "./data"
+    query AP_DATA "Local data directory" "\$AP_BASE/data" "./data"
     query AP_STORE_NAME "Relative path used in store paths (see next queries)" "analysis_playground/store"
     query AP_STORE_LOCAL "Default local output store" "\$AP_DATA/\$AP_STORE_NAME"
     export_and_save AP_STORE_CERNBOX "/eos/user/\${AP_USER:0:1}/\$AP_USER/\$AP_STORE_NAME"
