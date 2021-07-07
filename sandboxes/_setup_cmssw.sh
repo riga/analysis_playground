@@ -4,12 +4,14 @@
 # depending on whether the installation is already present, and whether the script is called as part
 # of a remote (law) job (AP_REMOTE_JOB=1).
 #
-# Four environment variables are expected to be set before this script is called:
+# Five environment variables are expected to be set before this script is called:
 #   - AP_SCRAM_ARCH: The scram architecture string.
 #   - AP_CMSSW_VERSION: The desired CMSSW version to setup.
 #   - AP_CMSSW_BASE: The location where the CMSSW environment should be installed.
 #   - AP_CMSSW_ENV_NAME: The name of the environment to prevent collisions between multiple
 #                        environments using the same CMSSW version.
+#   - AP_CMSSW_FLAG: An incremental integer value stored in the installed CMSSW environment to
+#                    detect whether it needs to be updated.
 #
 # Arguments:
 # 1. mode: The setup mode. Different values are accepted:
@@ -73,6 +75,10 @@ action() {
         2>&1 echo "AP_CMSSW_ENV_NAME is not set but required by $this_file to setup CMSSW"
         return "4"
     fi
+    if [ -z "$AP_CMSSW_FLAG" ]; then
+        2>&1 echo "AP_CMSSW_FLAG is not set but required by $this_file to setup CMSSW"
+        return "5"
+    fi
 
 
     #
@@ -81,6 +87,7 @@ action() {
 
     local install_base="$AP_CMSSW_BASE/$AP_CMSSW_ENV_NAME"
     local install_path="$install_base/$AP_CMSSW_VERSION"
+    local flag_file="$install_path/ap_flag"
 
     # remove the current installation
     if [ "$mode" = "clear" ] || [ "$mode" = "reinstall" ]; then
@@ -106,6 +113,9 @@ action() {
                 bash "$( law location )/contrib/cms/scripts/setup_gfal_plugins.sh" "$install_path/lib/gfal2" || return "$?"
                 # remove the still incompatible http plugin
                 rm -f "$install_path/lib/gfal2/"libgfal_plugin_http.*
+
+                # write the flag into a file
+                echo "version $AP_CMSSW_FLAG" > "$flag_file"
             )
         elif [ "$AP_REMOTE_NEWENV" = "1" ]; then
             # fetch
@@ -121,17 +131,26 @@ action() {
             # cd "$LAW_JOB_HOME"
         else
             2>&1 echo "CMSSW environment for remote job with existing environment expected at '$install_path', but not existing"
-            return "5"
+            return "6"
         fi
     fi
-    # optionally stop here
-    [ "$mode" = "install_only" ] && return "0"
 
     # at this point, the src path must exist
     if [ ! -d "$install_path/src" ]; then
         2>&1 echo "src directory not found in CMSSW installation at $install_path"
-        return "6"
+        return "7"
     fi
+
+    # check the flag and show a warning when there was an update
+    if [ "$( cat "$flag_file" | grep -Po "version \K\d+.*" )" != "$AP_CMSSW_FLAG" ]; then
+        2>&1 echo ""
+        2>&1 echo "WARNING: the CMSSW software environment $AP_CMSSW_ENV_NAME seems to be outdated"
+        2>&1 echo "WARNING: please consider removing (mode 'clear') or updating it (mode 'reinstall')"
+        2>&1 echo ""
+    fi
+
+    # optionally stop here
+    [ "$mode" = "install_only" ] && return "0"
 
     # source it
     source "/cvmfs/cms.cern.ch/cmsset_default.sh" "" || return "$?"

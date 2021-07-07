@@ -11,6 +11,7 @@ action() {
     export AP_SCRAM_ARCH="slc7_amd64_gcc820"
     export AP_CMSSW_VERSION="CMSSW_10_6_27"
     export AP_CMSSW_ENV_NAME="$( basename "${this_file%.sh}" )"
+    export AP_CMSSW_FLAG="1"
 
     source "$this_dir/_setup_cmssw.sh" "$@"
 }
