@@ -19,6 +19,7 @@ bootstrap_htcondor_getenv() {
     # set env variables
     export AP_ON_HTCONDOR="1"
     export AP_REMOTE_JOB="1"
+    export AP_REMOTE_NEWENV="0"
 
     return "0"
 }
@@ -38,11 +39,12 @@ bootstrap_htcondor_standalone() {
     export AP_LOCAL_SCHEDULER="{{ap_local_scheduler}}"
     export AP_ON_HTCONDOR="1"
     export AP_REMOTE_JOB="1"
+    export AP_REMOTE_NEWENV="1"
 
     # load the software bundle
     mkdir -p "$AP_SOFTWARE"
     cd "$AP_SOFTWARE"
-    fetch_local_file "{{ap_software_pattern}}" software.tgz || return "$?"
+    ap_fetch_file "{{ap_software_pattern}}" software.tgz || return "$?"
     tar -xzf "software.tgz" || return "$?"
     rm "software.tgz"
     cd "$LAW_JOB_HOME"
@@ -50,7 +52,7 @@ bootstrap_htcondor_standalone() {
     # load the repo bundle
     mkdir -p "$AP_BASE"
     cd "$AP_BASE"
-    fetch_local_file "{{ap_repo_pattern}}" repo.tgz || return "$?"
+    ap_fetch_file "{{ap_repo_pattern}}" repo.tgz || return "$?"
     tar -xzf "repo.tgz" || return "$?"
     rm "repo.tgz"
     cd "$LAW_JOB_HOME"
@@ -61,16 +63,18 @@ bootstrap_htcondor_standalone() {
     return "0"
 }
 
-# Copies a local, potentially replicated file to a certain location. When the file to copy contains
-# pattern characters, e.g. "/path/to/some/file.*.tgz", a random existing file matching that pattern
-# is selected.
+# Copies a potentially replicated file from a local or remote source to a certain local destination.
+# When the file to copy contains pattern characters, e.g. "/path/to/some/file.*.tgz", a random
+# existing file matching that pattern is selected.
 # Arguments:
 #   1. src_pattern: Path of a file or pattern matching multiple files of which one is copied.
 #   2. dst_path   : Path where the source file should be copied to.
-fetch_local_file() {
+ap_fetch_file() {
     # get arguments
     local src_pattern="$1"
     local dst_path="$2"
+
+    # TODO: handle remote sources
 
     # select one random file matched by pattern with two attempts
     local src_path
@@ -98,5 +102,6 @@ fetch_local_file() {
     # copy the file
     cp "$src_path" "$dst_path"
 }
+export -f ap_fetch_file
 
 bootstrap_{{ap_bootstrap_name}} "$@"

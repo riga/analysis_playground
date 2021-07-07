@@ -22,10 +22,10 @@ class GetDatasetLFNs(DatasetTask, law.tasks.TransferLocalFile):
         default=10,
         description="number of replicas to generate; default: 10",
     )
-
     version = None
 
     def single_output(self):
+        # required by law.tasks.TransferLocalFile
         h = law.util.create_hash(sorted(self.dataset_info_inst.keys))
         return self.local_target("lfns_{}.json".format(h))
 

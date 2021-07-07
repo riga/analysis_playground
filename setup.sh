@@ -50,21 +50,29 @@ setup() {
 
 
     #
-    # minimal local software stack
+    # minimal local software setup
     #
+
+    # use the latest centos7 ui from the grid setup on cvmfs
+    export AP_LCG_DIR="/cvmfs/grid.cern.ch/umd-c7ui-latest"
+    if [ ! -d "$AP_LCG_DIR" ]; then
+        2>&1 echo "LCG directory $AP_LCG_DIR not existing"
+        return "1"
+    fi
+    source "$AP_LCG_DIR/etc/profile.d/setup-c7-ui-example.sh" ""
 
     # update paths and flags
     local pyv="$( python -c "import sys; print('{0.major}.{0.minor}'.format(sys.version_info))" )"
     export PATH="$AP_BASE/bin:$AP_BASE/ap/scripts:$AP_BASE/modules/law/bin:$AP_SOFTWARE/bin:$PATH"
-    export PYTHONPATH="$AP_SOFTWARE/lib/python${pyv}/site-packages:$AP_SOFTWARE/lib64/python${pyv}/site-packages:$PYTHONPATH"
     export PYTHONPATH="$AP_BASE/modules/law:$AP_BASE/modules/scinum:$AP_BASE/modules/order:$AP_BASE/modules/plotlib:$PYTHONPATH"
+    export PYTHONPATH="$AP_SOFTWARE/lib/python${pyv}/site-packages:$AP_SOFTWARE/lib64/python${pyv}/site-packages:$PYTHONPATH"
     export PYTHONPATH="$AP_BASE:$PYTHONPATH"
     export PYTHONWARNINGS="ignore"
     export PYTHONNOUSERSITE="1"
     export GLOBUS_THREAD_MODEL="none"
     ulimit -s unlimited
 
-    # local stack
+    # local python stack
     local sw_version="1"
     local flag_file_sw="$AP_SOFTWARE/.sw_good"
     [ "$AP_REINSTALL_SOFTWARE" = "1" ] && rm -f "$flag_file_sw"
@@ -77,6 +85,7 @@ setup() {
         ap_pip_install six==1.15.0 || return "$?"
         ap_pip_install luigi==2.8.13 || return "$?"
         ap_pip_install python-telegram-bot==12.3.0 || return "$?"
+        ap_pip_install tornado==5.1.1 || return "$?"
 
         date "+%s" > "$flag_file_sw"
         echo "version $sw_version" >> "$flag_file_sw"
@@ -89,31 +98,6 @@ setup() {
         2>&1 echo "WARNING: your local software stack is not up to date, please consider updating it in a new shell with"
         2>&1 echo "         > AP_REINSTALL_SOFTWARE=1 source setup.sh $( $setup_is_default || echo "$setup_name" )"
         2>&1 echo ""
-    fi
-
-    # gfal2 bindings (optional)
-    local lcg_dir="/cvmfs/grid.cern.ch/centos7-ui-4.0.3-1_umd4v3/usr"
-    if [ ! -d "$lcg_dir" ]; then
-        2>&1 echo "lcg directory $lcg_dir not existing, skipping gfal2 setup"
-    else
-        export AP_GFAL_DIR="$AP_SOFTWARE/gfal2"
-        export GFAL_PLUGIN_DIR="$AP_GFAL_DIR/plugins"
-        export PYTHONPATH="$AP_GFAL_DIR:$PYTHONPATH"
-
-        local flag_file_gfal="$AP_SOFTWARE/.gfal_good"
-        [ "$AP_REINSTALL_GFAL" = "1" ] && rm -f "$flag_file_gfal"
-        if [ ! -f "$flag_file_gfal" ]; then
-            echo "linking gfal2 bindings"
-
-            rm -rf "$AP_GFAL_DIR"
-            mkdir -p "$GFAL_PLUGIN_DIR"
-
-            ln -s $lcg_dir/lib64/python2.7/site-packages/gfal2.so "$AP_GFAL_DIR" || return "$?"
-            ln -s $lcg_dir/lib64/gfal2-plugins/libgfal_plugin_* "$GFAL_PLUGIN_DIR" || return "$?"
-
-            date "+%s" > "$flag_file_gfal"
-        fi
-        export AP_SOFTWARE_FLAG_FILES="$AP_SOFTWARE_FLAG_FILES $flag_file_gfal"
     fi
 
 
@@ -181,7 +165,7 @@ interactive_setup() {
         local varname="$1"
         local value="$2"
 
-        export $varname="$value"
+        export $varname="$( eval "echo $value" )"
         ! $setup_is_default && echo "export $varname=\"$value\"" >> "$env_file_tmp"
     }
 
@@ -190,6 +174,7 @@ interactive_setup() {
         local text="$2"
         local default="$3"
         local default_text="${4:-$default}"
+        local default_raw="$default"
 
         # when the setup is the default one, use the default value when the env variable is empty,
         # otherwise, query interactively
@@ -209,9 +194,8 @@ interactive_setup() {
                 read query_response
                 [ "X$query_response" = "X" ] && query_response="$default"
             done
+            value="$query_response"
 
-            # save the expanded value
-            value="$( eval "echo $query_response" )"
             # strip " and ' on both sides
             value=${value%\"}
             value=${value%\'}
@@ -233,11 +217,13 @@ interactive_setup() {
     # start querying for variables
     query AP_USER "CERN / WLCG username" "$( whoami )"
     query AP_DATA "Local data directory" "$AP_BASE/data" "./data"
-    query AP_STORE "Default local output store" "$AP_DATA/store" "\$AP_DATA/store"
-    query AP_STORE_BUNDLES "Output store for software bundles when submitting jobs" "$AP_STORE" "\$AP_STORE"
-    query AP_SOFTWARE "Directory for installing software" "$AP_DATA/software" "\$AP_DATA/software"
-    query AP_JOB_DIR "Directory for storing job files" "$AP_DATA/jobs" "\$AP_DATA/jobs"
-    query AP_TASK_NAMESPACE "Namespace (i.e. the prefix) of law tasks" "" "''"
+    query AP_STORE_NAME "Relative path used in store paths (see next queries)" "analysis_playground/store"
+    query AP_STORE_LOCAL "Default local output store" "\$AP_DATA/\$AP_STORE_NAME"
+    export_and_save AP_STORE_CERNBOX "/eos/user/\${AP_USER:0:1}/\$AP_USER/\$AP_STORE_NAME"
+    query AP_WLCG_CACHE "Local directory for caching remote files" ""
+    query AP_SOFTWARE "Local directory for installing software" "\$AP_DATA/software"
+    query AP_CMSSW_BASE "Local directory for installing CMSSW" "\$AP_DATA/cmssw"
+    query AP_JOB_BASE "Local directory for storing job files" "\$AP_DATA/jobs"
     query AP_LOCAL_SCHEDULER "Use a local scheduler for law tasks" "True"
     if [ "$AP_LOCAL_SCHEDULER" != "True" ]; then
         query AP_SCHEDULER_HOST "Address of a central scheduler for law tasks" "USER:PASS@HOST.TLD"
@@ -250,7 +236,7 @@ interactive_setup() {
     # move the env file to the correct location for later use
     if ! $setup_is_default; then
         mv "$env_file_tmp" "$env_file"
-        echo -e "\nsetup variables written to $env_file"
+        echo -e "\nvariables written to $env_file"
     fi
 }
 

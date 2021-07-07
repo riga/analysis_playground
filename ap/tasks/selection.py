@@ -12,6 +12,8 @@ from ap.util import ensure_proxy, determine_xrd_redirector
 
 class SelectEvents(DatasetTask, HTCondorWorkflow):
 
+    sandbox = "bash::$AP_BASE/sandboxes/hh_bbtt_cmssw_default.sh"
+
     def workflow_requires(self):
         return GetDatasetLFNs.req(self)
 
@@ -19,20 +21,23 @@ class SelectEvents(DatasetTask, HTCondorWorkflow):
         return GetDatasetLFNs.req(self)
 
     def output(self):
-        return self.local_target("data_{}.npz".format(self.branch))
+        # return self.local_target("data_{}.npz".format(self.branch))
+        return self.wlcg_target("data_{}.npz".format(self.branch))
 
     @law.decorator.notify
     @law.decorator.safe_output
     @ensure_proxy
     def run(self):
+        import numpy as np
+
         # get the lfn of the file referenced by this branch
         lfn = str(self.input().random_target().load(formatter="json")[self.branch])
-        self.logger.debug("using LFN {}".format(lfn))
+        self.publish_message("found LFN {}".format(lfn))
 
         # determine the best redirector and build the pfn
         rdr = determine_xrd_redirector(lfn)
         pfn = "root://{}/{}".format(rdr, lfn)
-        self.logger.info("using redirector {}".format(rdr))
+        self.publish_message("using redirector {}".format(rdr))
 
         # copy the file to a local target for further processing
         with self.publish_step("fetch input file ..."):
@@ -43,7 +48,19 @@ class SelectEvents(DatasetTask, HTCondorWorkflow):
                 raise Exception("xrdcp command failed")
 
         # open with uproot / coffea / etc and process
-        pass
+        data = tmp.load(formatter="uproot")
+        events = data["Events"]
+
+        # dummy task: get all jet 1 pt values
+        jet1_pt = []
+        with self.publish_step("load jet pts ..."):
+            for batch in events.iterate(["nJet", "Jet_pt"], entrysteps=1000):
+                print("batch")
+                mask = batch["nJet"] >= 1
+                jet1_pt.append(batch["Jet_pt"][mask][:, 0])
+
+        jet1_pt = np.concatenate(jet1_pt, axis=0)
+        self.output().dump(data=jet1_pt, formatter="numpy")
 
 
 # trailing imports

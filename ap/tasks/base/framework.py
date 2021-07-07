@@ -21,15 +21,18 @@ class BaseTask(law.Task):
     task_namespace = os.getenv("AP_TASK_NAMESPACE")
 
 
-class AnalysisTask(BaseTask):
+class AnalysisTask(BaseTask, law.SandboxTask):
 
     version = luigi.Parameter(description="mandatory version that is encoded into output paths")
 
     output_collection_cls = law.SiblingFileCollection
-    default_store = "$AP_STORE"
+    allow_empty_sandbox = True
 
     # hard-coded analysis name, could be changed to a parameter
     analysis = "hh_bbtt"
+
+    default_store = "$AP_STORE_LOCAL"
+    default_wlcg_fs = "wlcg_fs"
 
     @classmethod
     def modify_param_values(cls, params):
@@ -104,7 +107,7 @@ class AnalysisTask(BaseTask):
 
     def local_path(self, *path, **kwargs):
         """ local_path(*path, store=None)
-        Joins several path fragments in the following order:
+        Joins several path fragments for use on local targets in the following order:
 
             - *store* (defaulting to :py:attr:`default_store`)
             - Values of :py:meth:`store_parts` (in that order)
@@ -114,10 +117,8 @@ class AnalysisTask(BaseTask):
         # determine the main store directory
         store = kwargs.get("store") or self.default_store
 
-        # concatenate all parts that make up the path
+        # concatenate all parts that make up the path and join them
         parts = tuple(self.store_parts().values()) + tuple(self.store_parts_ext().values()) + path
-
-        # join
         path = os.path.join(store, *(str(p) for p in parts))
 
         return path
@@ -132,6 +133,41 @@ class AnalysisTask(BaseTask):
 
         # create the local path
         path = self.local_path(*path, store=kwargs.pop("store", None))
+
+        # create the target instance and return it
+        return cls(path, **kwargs)
+
+    def wlcg_path(self, *path):
+        """
+        Joins several path fragments for use in remote targets in the following order:
+
+            - Values of :py:meth:`store_parts` (in that order)
+            - Values of :py:meth:`store_parts_ext` (in that order)
+            - *path* fragments passed to this method
+
+        The full URI to the target is not considered as it is usually defined in ``[wlcg_fs]``
+        sections in the law config and hence subject to :py:func:`wlcg_target`.
+        """
+        # concatenate all parts that make up the path and join them
+        parts = tuple(self.store_parts().values()) + tuple(self.store_parts_ext().values()) + path
+        path = os.path.join(*(str(p) for p in parts))
+
+        return path
+
+    def wlcg_target(self, *path, **kwargs):
+        """ wlcg_target(*path, dir=False, fs=default_wlcg_fs, **kwargs)
+        Creates either a remote WLCG file or directory target, depending on *dir*, forwarding all
+        *path* fragments to :py:meth:`wlcg_path` and all *kwargs* the respective target class. When
+        *None*, *fs* defaults to the *default_wlcg_fs* class level attribute.
+        """
+        if not kwargs.get("fs"):
+            kwargs["fs"] = self.default_wlcg_fs
+
+        # select the target class
+        cls = law.wlcg.WLCGDirectoryTarget if kwargs.pop("dir", False) else law.wlcg.WLCGFileTarget
+
+        # create the local path
+        path = self.wlcg_path(*path)
 
         # create the target instance and return it
         return cls(path, **kwargs)

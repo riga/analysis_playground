@@ -1,7 +1,7 @@
 # coding: utf-8
 
 """
-Main entry point and global settings with priority.
+Main entry point for top-level settings and fixes before anything else is imported.
 """
 
 import law
