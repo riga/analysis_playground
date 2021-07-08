@@ -10,18 +10,21 @@ from ap.tasks.base import DatasetTask, HTCondorWorkflow
 from ap.util import ensure_proxy, determine_xrd_redirector
 
 
-class SelectEvents(DatasetTask, HTCondorWorkflow):
+class SelectEvents(DatasetTask, law.LocalWorkflow, HTCondorWorkflow):
 
     sandbox = "bash::$AP_BASE/sandboxes/hh_bbtt_cmssw_default.sh"
 
     def workflow_requires(self):
-        return GetDatasetLFNs.req(self)
+        # workflow super classes might already define requirements, so extend them
+        reqs = super(SelectEvents, self).workflow_requires()
+        reqs["lfns"] = GetDatasetLFNs.req(self)
+        return reqs
 
     def requires(self):
-        return GetDatasetLFNs.req(self)
+        # workflow branches are normal tasks, so define requirements the normal way
+        return {"lfns": GetDatasetLFNs.req(self)}
 
     def output(self):
-        # return self.local_target("data_{}.npz".format(self.branch))
         return self.wlcg_target("data_{}.npz".format(self.branch))
 
     @law.decorator.notify
@@ -31,7 +34,7 @@ class SelectEvents(DatasetTask, HTCondorWorkflow):
         import numpy as np
 
         # get the lfn of the file referenced by this branch
-        lfn = str(self.input().random_target().load(formatter="json")[self.branch])
+        lfn = str(self.input()["lfns"].random_target().load(formatter="json")[self.branch])
         self.publish_message("found LFN {}".format(lfn))
 
         # determine the best redirector and build the pfn

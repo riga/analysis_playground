@@ -46,11 +46,11 @@ action() {
     local mode="${1:-}"
     if [ "$AP_REMOTE_JOB" = "1" ]; then
         if [ ! -z "$mode" ]; then
-            2>&1 echo "the CMSSW source mode must be empty in remote jobs, but got '$mode'"
+            >&2 echo "the CMSSW source mode must be empty in remote jobs, but got '$mode'"
             return "10"
         fi
     elif [ ! -z "$mode" ] && [ "$mode" != "clear" ] && [ "$mode" != "reinstall" ] && [ "$mode" != "install_only" ]; then
-        2>&1 echo "unknown CMSSW source mode '$mode'"
+        >&2 echo "unknown CMSSW source mode '$mode'"
         return "11"
     fi
 
@@ -60,23 +60,23 @@ action() {
     #
 
     if [ -z "$AP_SCRAM_ARCH" ]; then
-        2>&1 echo "AP_SCRAM_ARCH is not set but required by $this_file to setup CMSSW"
+        >&2 echo "AP_SCRAM_ARCH is not set but required by $this_file to setup CMSSW"
         return "1"
     fi
     if [ -z "$AP_CMSSW_VERSION" ]; then
-        2>&1 echo "AP_CMSSW_VERSION is not set but required by $this_file to setup CMSSW"
+        >&2 echo "AP_CMSSW_VERSION is not set but required by $this_file to setup CMSSW"
         return "2"
     fi
     if [ -z "$AP_CMSSW_BASE" ]; then
-        2>&1 echo "AP_CMSSW_BASE is not set but required by $this_file to setup CMSSW"
+        >&2 echo "AP_CMSSW_BASE is not set but required by $this_file to setup CMSSW"
         return "3"
     fi
     if [ -z "$AP_CMSSW_ENV_NAME" ]; then
-        2>&1 echo "AP_CMSSW_ENV_NAME is not set but required by $this_file to setup CMSSW"
+        >&2 echo "AP_CMSSW_ENV_NAME is not set but required by $this_file to setup CMSSW"
         return "4"
     fi
     if [ -z "$AP_CMSSW_FLAG" ]; then
-        2>&1 echo "AP_CMSSW_FLAG is not set but required by $this_file to setup CMSSW"
+        >&2 echo "AP_CMSSW_FLAG is not set but required by $this_file to setup CMSSW"
         return "5"
     fi
 
@@ -108,6 +108,9 @@ action() {
                 source "/cvmfs/cms.cern.ch/cmsset_default.sh" "" || return "$?"
                 export SCRAM_ARCH="$AP_SCRAM_ARCH"
                 scramv1 project CMSSW "$AP_CMSSW_VERSION" || return "$?"
+                cd "$AP_CMSSW_VERSION/src"
+                eval "$( scramv1 runtime -sh )" || return "$?"
+                scram b || return "$?"
 
                 # also setup CMSSW-compatible gfal2 bindings
                 bash "$( law location )/contrib/cms/scripts/setup_gfal_plugins.sh" "$install_path/lib/gfal2" || return "$?"
@@ -116,37 +119,51 @@ action() {
 
                 # write the flag into a file
                 echo "version $AP_CMSSW_FLAG" > "$flag_file"
-            )
+            ) || return "$?"
         elif [ "$AP_REMOTE_NEWENV" = "1" ]; then
-            # fetch
-            echo "NOT IMPLEMENTED YET"
-            return "-1"
+            # determine the bundle to unpack
+            local bundle="$AP_SOFTWARE/cmssw_sandboxes/$AP_CMSSW_ENV_NAME.tgz"
+            if [ ! -f "$bundle" ]; then
+                >&2 echo "prefetched bundle expected at $bundle not does not exist"
+                return "7"
+            fi
 
-            # TODO: should be something along the lines of
-            # mkdir -p "$AP_SOFTWARE"
-            # cd "$AP_SOFTWARE"
-            # ap_fetch_file "{{ap_software_pattern}}" software.tgz || return "$?"
-            # tar -xzf "software.tgz" || return "$?"
-            # rm "software.tgz"
-            # cd "$LAW_JOB_HOME"
+            # create a new cmssw checkout, unpack the bundle on top and rebuild python symlinks
+            (
+                echo "unpacking bundle $bundle to $install_path"
+                mkdir -p "$install_base" || return "$?"
+                cd "$install_base"
+                source "/cvmfs/cms.cern.ch/cmsset_default.sh" "" || return "$?"
+                export SCRAM_ARCH="$AP_SCRAM_ARCH"
+                scramv1 project CMSSW "$AP_CMSSW_VERSION" || return "$?"
+                cd "$AP_CMSSW_VERSION"
+                cp "$bundle" .
+                tar -xzf "$( basename "$bundle" )" || return "$?"
+                cd "src" || return "$?"
+                eval "$( scramv1 runtime -sh )" || return "$?"
+                scram b python || return "$?"
+            ) || return "$?"
+
+            # write the flag into a file
+            echo "version $AP_CMSSW_FLAG" > "$flag_file"
         else
-            2>&1 echo "CMSSW environment for remote job with existing environment expected at '$install_path', but not existing"
+            >&2 echo "CMSSW environment for remote job with existing environment expected at '$install_path', but not existing"
             return "6"
         fi
     fi
 
     # at this point, the src path must exist
     if [ ! -d "$install_path/src" ]; then
-        2>&1 echo "src directory not found in CMSSW installation at $install_path"
+        >&2 echo "src directory not found in CMSSW installation at $install_path"
         return "7"
     fi
 
     # check the flag and show a warning when there was an update
     if [ "$( cat "$flag_file" | grep -Po "version \K\d+.*" )" != "$AP_CMSSW_FLAG" ]; then
-        2>&1 echo ""
-        2>&1 echo "WARNING: the CMSSW software environment $AP_CMSSW_ENV_NAME seems to be outdated"
-        2>&1 echo "WARNING: please consider removing (mode 'clear') or updating it (mode 'reinstall')"
-        2>&1 echo ""
+        >&2 echo ""
+        >&2 echo "WARNING: the CMSSW software environment $AP_CMSSW_ENV_NAME seems to be outdated"
+        >&2 echo "WARNING: please consider removing (mode 'clear') or updating it (mode 'reinstall')"
+        >&2 echo ""
     fi
 
     # optionally stop here

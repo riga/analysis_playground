@@ -38,7 +38,7 @@ setup() {
     [ -z "$LC_ALL" ] && export LC_ALL="en_US.UTF-8"
 
     # proxy
-    export X509_USER_PROXY="/tmp/x509up_u$( id -u )"
+    [ -z "$X509_USER_PROXY" ] && export X509_USER_PROXY="/tmp/x509up_u$( id -u )"
 
 
     #
@@ -239,7 +239,8 @@ interactive_setup() {
     query AP_STORE_NAME "Relative path used in store paths (see next queries)" "analysis_playground/store"
     query AP_STORE_LOCAL "Default local output store" "\$AP_DATA/\$AP_STORE_NAME"
     export_and_save AP_STORE_CERNBOX "/eos/user/\${AP_USER:0:1}/\$AP_USER/\$AP_STORE_NAME"
-    query AP_WLCG_CACHE "Local directory for caching remote files" ""
+    query AP_WLCG_CACHE_ROOT "Local directory for caching remote files" ""
+    export_and_save AP_WLCG_USE_CACHE "$( [ -z "$AP_WLCG_CACHE_ROOT" ] && echo False || echo True )"
     query AP_SOFTWARE "Local directory for installing software" "\$AP_DATA/software"
     query AP_CMSSW_BASE "Local directory for installing CMSSW" "\$AP_DATA/cmssw"
     query AP_JOB_BASE "Local directory for storing job files" "\$AP_DATA/jobs"

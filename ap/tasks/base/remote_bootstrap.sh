@@ -10,7 +10,7 @@
 # variables of the submitting shell and the job node will be identical.
 bootstrap_htcondor_getenv() {
     # on the CERN HTCondor batch, the PATH and PYTHONPATH variables are changed even though "getenv"
-    # is set, in the job file, so set them manually to the desired values
+    # is set in the job file, so set them manually to the desired values
     if [ "{{ap_htcondor_flavor}}" = "cern" ]; then
         export PATH="{{ap_env_path}}"
         export PYTHONPATH="{{ap_env_pythonpath}}"
@@ -30,78 +30,55 @@ bootstrap_htcondor_getenv() {
 # tailored for remote jobs.
 bootstrap_htcondor_standalone() {
     # set env variables
+    export AP_USER="{{ap_user}}"
     export AP_BASE="$LAW_JOB_HOME/repo"
     export AP_DATA="$LAW_JOB_HOME/ap_data"
     export AP_SOFTWARE="$AP_DATA/software"
-    export AP_STORE="{{ap_store}}"
-    export AP_USER="{{ap_user}}"
-    export AP_TASK_NAMESPACE="{{ap_task_namespace}}"
+    export AP_STORE_NAME="{{ap_store_name}}"
+    export AP_STORE_LOCAL="$AP_DATA/store"
+    export AP_WLCG_USE_CACHE=False
     export AP_LOCAL_SCHEDULER="{{ap_local_scheduler}}"
     export AP_ON_HTCONDOR="1"
     export AP_REMOTE_JOB="1"
     export AP_REMOTE_NEWENV="1"
+    export X509_USER_PROXY="$PWD/{{ap_proxy_file}}{{file_postfix}}"
+
+    # source the lcg software for access to wlcg executables
+    source "{{ap_lcg_dir}}/etc/profile.d/setup-c7-ui-example.sh" "" || return "$?"
+
+    # source the law wlcg tools, mainly for law_wlcg_get_file
+    source "law_wlcg_tools{{file_postfix}}.sh" ""
 
     # load the software bundle
-    mkdir -p "$AP_SOFTWARE"
-    cd "$AP_SOFTWARE"
-    ap_fetch_file "{{ap_software_pattern}}" software.tgz || return "$?"
-    tar -xzf "software.tgz" || return "$?"
-    rm "software.tgz"
-    cd "$LAW_JOB_HOME"
+    (
+        mkdir -p "$AP_SOFTWARE"
+        cd "$AP_SOFTWARE"
+        law_wlcg_get_file "{{ap_software_uris}}" "{{ap_software_pattern}}" "software.tgz" || return "$?"
+        tar -xzf "software.tgz" || return "$?"
+        rm "software.tgz"
+    ) || return "$?"
 
     # load the repo bundle
-    mkdir -p "$AP_BASE"
-    cd "$AP_BASE"
-    ap_fetch_file "{{ap_repo_pattern}}" repo.tgz || return "$?"
-    tar -xzf "repo.tgz" || return "$?"
-    rm "repo.tgz"
-    cd "$LAW_JOB_HOME"
+    (
+        mkdir -p "$AP_BASE"
+        cd "$AP_BASE"
+        law_wlcg_get_file "{{ap_repo_uris}}" "{{ap_repo_pattern}}" "repo.tgz" || return "$?"
+        tar -xzf "repo.tgz" || return "$?"
+        rm "repo.tgz"
+    ) || return "$?"
+
+    # prefetch cmssw sandbox bundles
+    local cmssw_sandbox_uris={{ap_cmssw_sandbox_uris}}
+    local cmssw_sandbox_patterns={{ap_cmssw_sandbox_patterns}}
+    local cmssw_sandbox_names={{ap_cmssw_sandbox_names}}
+    for (( i=0; i<${#cmssw_sandbox_uris[@]}; i+=1 )); do
+        law_wlcg_get_file "${cmssw_sandbox_uris[i]}" "${cmssw_sandbox_patterns[i]}" "$AP_SOFTWARE/cmssw_sandboxes/${cmssw_sandbox_names[i]}.tgz" || return "$?"
+    done
 
     # source the repo setup
     source "$AP_BASE/setup.sh" "default" || return "$?"
 
     return "0"
 }
-
-# Copies a potentially replicated file from a local or remote source to a certain local destination.
-# When the file to copy contains pattern characters, e.g. "/path/to/some/file.*.tgz", a random
-# existing file matching that pattern is selected.
-# Arguments:
-#   1. src_pattern: Path of a file or pattern matching multiple files of which one is copied.
-#   2. dst_path   : Path where the source file should be copied to.
-ap_fetch_file() {
-    # get arguments
-    local src_pattern="$1"
-    local dst_path="$2"
-
-    # TODO: handle remote sources
-
-    # select one random file matched by pattern with two attempts
-    local src_path
-    for i in 1 2; do
-        src_path="$( ls $src_pattern | shuf -n 1 )"
-        if [ ! -z "$src_path" ]; then
-            echo "using source file $src_path"
-            break
-        fi
-
-        local msg="could not determine src file from pattern $src_pattern"
-        if [ "$i" != "2" ]; then
-            echo "$msg, next attempt in 5 seconds"
-            sleep 5
-        else
-            2>&1 echo "$msg, stopping"
-            return "1"
-        fi
-    done
-
-    # create the target directory if it does not exist yet
-    local dst_dir="$( dirname "$dst_path" )"
-    [ ! -d "$dst_dir" ] && mkdir -p "$dst_dir"
-
-    # copy the file
-    cp "$src_path" "$dst_path"
-}
-export -f ap_fetch_file
 
 bootstrap_{{ap_bootstrap_name}} "$@"

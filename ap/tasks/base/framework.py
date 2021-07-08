@@ -24,6 +24,7 @@ class BaseTask(law.Task):
 class AnalysisTask(BaseTask, law.SandboxTask):
 
     version = luigi.Parameter(description="mandatory version that is encoded into output paths")
+    sandbox = None
 
     output_collection_cls = law.SiblingFileCollection
     allow_empty_sandbox = True

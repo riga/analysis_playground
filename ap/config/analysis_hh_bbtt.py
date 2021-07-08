@@ -23,6 +23,11 @@ ana = analysis_hh_bbtt = od.Analysis(
 ana.set_aux("versions", {
 })
 
+# cmssw sandboxes that should be bundled for remote jobs in case they are needed
+ana.set_aux("cmssw_sandboxes", [
+    "hh_bbtt_cmssw_default.sh",
+])
+
 
 #
 # 2018 standard config

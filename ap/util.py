@@ -75,21 +75,23 @@ def create_random_name():
     return str(uuid.uuid4())
 
 
-def expand_path(path):
+def expand_path(*path):
     """
-    Takes a *path* and recursively expands all contained environment variables.
+    Takes *path* fragments, joins them and recursively expands all contained environment variables.
     """
+    path = os.path.join(*map(str, path))
     while "$" in path or "~" in path:
         path = os.path.expandvars(os.path.expanduser(path))
 
     return path
 
 
-def real_path(path):
+def real_path(*path):
     """
-    Takes a *path* and returns its real, absolute location with all variables expanded.
+    Takes *path* fragments and returns the joined,  real and absolute location with all variables
+    expanded.
     """
-    return os.path.realpath(expand_path(path))
+    return os.path.realpath(expand_path(*path))
 
 
 def wget(src, dst, force=False):
