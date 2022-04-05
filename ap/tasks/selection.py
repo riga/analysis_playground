@@ -53,6 +53,7 @@ class SelectEvents(DatasetTask, law.LocalWorkflow, HTCondorWorkflow):
         # open with uproot / coffea / etc and process
         data = tmp.load(formatter="uproot")
         events = data["Events"]
+        self.publish_message("found {} events".format(events.numentries))
 
         # dummy task: get all jet 1 pt values
         jet1_pt = []

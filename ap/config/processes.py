@@ -34,7 +34,7 @@ process_hh = od.Process(
     label="HH",
 )
 
-process_hh_ggf = od.Process(
+process_hh_ggf = process_hh.add_process(
     name="hh_ggf",
     id=130,
     label=r"$HH_{ggF}$",
